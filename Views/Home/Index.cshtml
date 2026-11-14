@@ -1,0 +1,116 @@
+﻿@{
+    ViewData["Title"] = "Private Chat SignalR";
+}
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-6 offset-md-3">
+            <h3 class="text-center mb-4">نظام محادثة خاصة (SignalR)</h3>
+
+            <!-- تسجيل الدخول بالاسم -->
+            <div class="card p-3 mb-3" id="loginCard">
+                <div class="mb-3">
+                    <label class="form-label">أدخل اسمك للبدء:</label>
+                    <input type="text" id="myUsername" class="form-control" placeholder="اسمك..." />
+                </div>
+                <button id="loginButton" class="btn btn-success w-100">دخول للدردشة</button>
+            </div>
+
+            <!-- قسم المحادثة (يظهر بعد تسجيل الاسم) -->
+            <div class="card p-3 mb-3 d-none" id="chatCard">
+                <div class="mb-3">
+                    <label class="form-label">أنت مسجل باسم: <strong id="lblMyName" class="text-primary"></strong></label>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">اختر أو اكتب اسم الشخص المستهدف:</label>
+                    <select id="targetUserSelect" class="form-select mb-2">
+                        <option value="">-- اختر مستخدم متصل --</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">الرسالة:</label>
+                    <input type="text" id="messageInput" class="form-control" placeholder="اكتب رسالتك الخاصة..." />
+                </div>
+                <button id="sendButton" class="btn btn-primary w-100">إرسال رسالة خاصة</button>
+            </div>
+
+            <!-- سجل الرسائل -->
+            <div class="card p-3">
+                <h5>الرسائل الخاصة الواردة:</h5>
+                <ul id="messagesList" class="list-group list-group-flush"></ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+
+    <script>
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl("/chatHub")
+            .build();
+
+        let myName = "";
+
+        // استقبال الرسائل الخاصة
+        connection.on("ReceivePrivateMessage", function (sender, message) {
+            const li = document.createElement("li");
+            li.className = "list-group-item";
+            li.innerHTML = `<strong>${sender}:</strong> ${message}`;
+            document.getElementById("messagesList").appendChild(li);
+        });
+
+        // تحديث القائمة المنسدلة بأسماء المستخدمين المتصلين
+        connection.on("UpdateUserList", function (users) {
+            const select = document.getElementById("targetUserSelect");
+            select.innerHTML = '<option value="">-- اختر مستخدم متصل --</option>';
+            
+            users.forEach(user => {
+                if (user !== myName) { // لا تظهر اسمك في قائمة المستهدفين
+                    const option = document.createElement("option");
+                    option.value = user;
+                    option.textContent = user;
+                    select.appendChild(option);
+                }
+            });
+        });
+
+        connection.start().catch(err => console.error(err.toString()));
+
+        // زر تسجيل الدخول بالاسم
+        document.getElementById("loginButton").addEventListener("click", function () {
+            myName = document.getElementById("myUsername").value.trim();
+            if (myName) {
+                document.getElementById("loginCard").classList.add("d-none");
+                document.getElementById("chatCard").classList.remove("d-none");
+                document.getElementById("lblMyName").textContent = myName;
+
+                // تسجيل المستخدم في السيرفر
+                connection.invoke("RegisterUser", myName).catch(err => console.error(err.toString()));
+            } else {
+                alert("الرجاء إدخال اسم صالح!");
+            }
+        });
+
+        // زر إرسال الرسالة الخاصة
+        document.getElementById("sendButton").addEventListener("click", function (event) {
+            const targetUser = document.getElementById("targetUserSelect").value;
+            const message = document.getElementById("messageInput").value;
+
+            if (!targetUser) {
+                alert("الرجاء اختيار الشخص المراد مراسلته!");
+                return;
+            }
+
+            if (message) {
+                connection.invoke("SendPrivateMessage", myName, targetUser, message)
+                    .then(() => {
+                        document.getElementById("messageInput").value = '';
+                    })
+                    .catch(err => console.error(err.toString()));
+            }
+            event.preventDefault();
+        });
+    </script>
+}
